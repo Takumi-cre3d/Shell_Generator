@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Shell Generator | Mathematical Morphology</title>
     
     <!-- React & ReactDOM -->
@@ -33,7 +33,8 @@
             background-color: #050505; 
             color: #e5e5e5;
             font-family: 'Inter', sans-serif;
-            overflow: hidden;
+            overflow: hidden; /* Prevent pull-to-refresh on mobile */
+            touch-action: none; /* Prevent browser zooming/scrolling */
         }
 
         /* Custom Scrollbar */
@@ -56,13 +57,14 @@
         }
         input[type=range]::-webkit-slider-thumb {
             -webkit-appearance: none;
-            height: 14px;
-            width: 14px;
+            height: 16px; /* Slightly larger for touch */
+            width: 16px;
             border-radius: 50%;
             background: #ffffff;
             cursor: pointer;
-            margin-top: -6px;
+            margin-top: -7px;
             border: 2px solid #000;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
         input[type=range]::-webkit-slider-runnable-track {
             width: 100%;
@@ -73,15 +75,15 @@
         
         /* Glass Panel */
         .glass-panel {
-            background: rgba(10, 10, 10, 0.75);
+            background: rgba(10, 10, 10, 0.85); /* Slightly darker for better contrast on mobile */
             backdrop-filter: blur(12px);
-            border-left: 1px solid rgba(255, 255, 255, 0.08);
+            /* Border handling moved to utility classes for responsiveness */
         }
 
         .canvas-container {
             width: 100vw;
             height: 100vh;
-            position: absolute;
+            position: fixed; /* Fixed prevents scrolling issues on mobile */
             top: 0;
             left: 0;
             z-index: 0;
@@ -92,8 +94,8 @@
             background-color: transparent;
             color: white;
             border: 1px solid #333;
-            padding: 4px 8px;
-            font-size: 10px;
+            padding: 6px 8px; /* Larger tap area */
+            font-size: 11px;
             font-family: 'Inter', sans-serif;
             text-transform: uppercase;
             width: 100%;
@@ -105,12 +107,13 @@
             color: white;
         }
 
-        /* 2D Editor - Minimal Style */
+        /* 2D Editor */
         .editor-container {
             padding: 0;
         }
         .editor-canvas {
             cursor: crosshair;
+            touch-action: none; /* Important for custom drag handling */
         }
 
         /* Editable Input */
@@ -126,7 +129,6 @@
             outline: none;
         }
 
-        /* Remove spin buttons from number input */
         input[type=number]::-webkit-inner-spin-button, 
         input[type=number]::-webkit-outer-spin-button { 
             -webkit-appearance: none; 
@@ -308,19 +310,23 @@
             return geometry;
         };
 
-        // --- Component: Cross Section Editor ---
+        // --- Component: Cross Section Editor (Mobile Optimized) ---
         const CrossSectionEditor = ({ points, setPoints, onEditStart }) => {
             const canvasRef = useRef(null);
             const [draggingIdx, setDraggingIdx] = useState(null);
-            const SIZE = 260; 
+            
+            // Adjust size slightly smaller for visual balance
+            const SIZE = 240; 
             const CENTER = SIZE / 2;
-            const SCALE = 80; 
+            const SCALE = 70; 
 
             useEffect(() => {
                 const canvas = canvasRef.current;
                 if (!canvas) return;
                 const ctx = canvas.getContext('2d');
                 ctx.clearRect(0, 0, SIZE, SIZE);
+                
+                // Draw Axes
                 ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
                 ctx.lineWidth = 1;
                 ctx.beginPath();
@@ -349,56 +355,85 @@
                         const px = CENTER + p.x * SCALE;
                         const py = CENTER - p.y * SCALE;
                         ctx.beginPath();
-                        ctx.arc(px, py, 4, 0, Math.PI * 2);
+                        ctx.arc(px, py, 5, 0, Math.PI * 2); // Slightly bigger points for touch
                         ctx.fill();
                     });
                 }
             }, [points]);
 
-            const handleMouseDown = (e) => {
-                const rect = canvasRef.current.getBoundingClientRect();
-                const mouseX = e.clientX - rect.left;
-                const mouseY = e.clientY - rect.top;
-                let minDist = 15; 
+            // Unified handler for Mouse and Touch
+            const getPointerPos = (e) => {
+                const canvas = canvasRef.current;
+                if (!canvas) return { x: 0, y: 0 };
+                const rect = canvas.getBoundingClientRect();
+                
+                let clientX = e.clientX;
+                let clientY = e.clientY;
+
+                // Check for touch
+                if (e.touches && e.touches.length > 0) {
+                    clientX = e.touches[0].clientX;
+                    clientY = e.touches[0].clientY;
+                }
+
+                return {
+                    x: clientX - rect.left,
+                    y: clientY - rect.top
+                };
+            };
+
+            const handleStart = (e) => {
+                // e.preventDefault(); // Prevents default only inside canvas if needed, but might block scroll elsewhere
+                const { x, y } = getPointerPos(e);
+                let minDist = 25; // Increased hit area for touch
                 let idx = -1;
+                
                 points.forEach((p, i) => {
                     const px = CENTER + p.x * SCALE;
                     const py = CENTER - p.y * SCALE;
-                    const dist = Math.sqrt((px - mouseX)**2 + (py - mouseY)**2);
+                    const dist = Math.sqrt((px - x)**2 + (py - y)**2);
                     if (dist < minDist) { minDist = dist; idx = i; }
                 });
-                if (idx !== -1) { setDraggingIdx(idx); onEditStart(); }
+                
+                if (idx !== -1) { 
+                    setDraggingIdx(idx); 
+                    onEditStart(); 
+                }
             };
 
-            const handleMouseMove = (e) => {
+            const handleMove = (e) => {
                 if (draggingIdx === null) return;
-                const rect = canvasRef.current.getBoundingClientRect();
-                const mouseX = e.clientX - rect.left;
-                const mouseY = e.clientY - rect.top;
-                const newX = (mouseX - CENTER) / SCALE;
-                const newY = (CENTER - mouseY) / SCALE;
+                e.preventDefault(); // Stop scrolling while dragging
+                
+                const { x, y } = getPointerPos(e);
+                const newX = (x - CENTER) / SCALE;
+                const newY = (CENTER - y) / SCALE;
+                
                 const newPoints = [...points];
                 newPoints[draggingIdx] = { x: newX, y: newY };
                 setPoints(newPoints);
             };
 
-            const handleMouseUp = () => { setDraggingIdx(null); };
+            const handleEnd = () => { setDraggingIdx(null); };
 
             return (
-                <div className="editor-container">
-                    <div className="text-[10px] text-gray-500 mb-2 font-bold uppercase tracking-widest flex items-baseline gap-4">
+                <div className="editor-container pointer-events-auto">
+                    <div className="text-[10px] text-gray-500 mb-1 font-bold uppercase tracking-widest flex items-baseline gap-2 justify-end md:justify-start">
                         <span className="text-white">Section Editor</span>
-                        <span className="text-xs text-gray-600 font-normal normal-case tracking-normal">Drag points to reshape</span>
                     </div>
+                    {/* Added touch events */}
                     <canvas 
                         ref={canvasRef}
                         width={SIZE}
                         height={SIZE}
-                        className="editor-canvas"
-                        onMouseDown={handleMouseDown}
-                        onMouseMove={handleMouseMove}
-                        onMouseUp={handleMouseUp}
-                        onMouseLeave={handleMouseUp}
+                        className="editor-canvas bg-black/20 rounded border border-white/10"
+                        onMouseDown={handleStart}
+                        onMouseMove={handleMove}
+                        onMouseUp={handleEnd}
+                        onMouseLeave={handleEnd}
+                        onTouchStart={handleStart}
+                        onTouchMove={handleMove}
+                        onTouchEnd={handleEnd}
                     />
                 </div>
             );
@@ -415,23 +450,18 @@
 
             const handleKeyDown = (e) => {
                 if (e.key === 'Enter') {
-                    const num = parseFloat(tempValue);
-                    if (!isNaN(num)) {
-                        onChange(num);
-                        if(onCommit) onCommit();
-                    }
-                    setIsEditing(false);
+                    finishEdit();
                 }
             };
 
-            const handleBlur = () => {
+            const finishEdit = () => {
                 const num = parseFloat(tempValue);
                 if (!isNaN(num)) {
                     onChange(num);
                     if(onCommit) onCommit();
                 }
                 setIsEditing(false);
-            };
+            }
 
             if (isEditing) {
                 return (
@@ -442,7 +472,7 @@
                         value={tempValue}
                         onChange={(e) => setTempValue(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        onBlur={handleBlur}
+                        onBlur={finishEdit}
                         autoFocus
                     />
                 );
@@ -450,9 +480,8 @@
 
             return (
                 <span 
-                    className="text-xs font-mono text-white cursor-text hover:text-blue-300 font-bold"
-                    onDoubleClick={() => setIsEditing(true)}
-                    title="Double click to edit"
+                    className="text-xs font-mono text-white cursor-text hover:text-blue-300 font-bold py-1 px-2 -mr-2"
+                    onClick={() => setIsEditing(true)}
                 >
                     {typeof value === 'number' ? value.toFixed(2) : '0.00'}
                 </span>
@@ -461,32 +490,33 @@
 
         // --- Component: Slider ---
         const Slider = ({ label, value, min, max, step = 0.01, onChange, onCommit }) => (
-            <div className="mb-4">
-                <div className="flex justify-between mb-1">
+            <div className="mb-5 md:mb-4">
+                <div className="flex justify-between mb-2">
                     <span className="text-[9px] font-bold tracking-widest text-gray-400 uppercase">{label}</span>
                     <EditableValue value={value} onChange={onChange} onCommit={onCommit} />
                 </div>
-                <input 
-                    type="range" 
-                    min={min} 
-                    max={max} 
-                    step={step} 
-                    value={value || 0} 
-                    onChange={(e) => onChange(parseFloat(e.target.value))}
-                    onMouseUp={onCommit}
-                    onTouchEnd={onCommit}
-                    onKeyUp={(e) => { if(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) onCommit && onCommit(); }}
-                />
+                <div className="px-1">
+                    <input 
+                        type="range" 
+                        min={min} 
+                        max={max} 
+                        step={step} 
+                        value={value || 0} 
+                        onChange={(e) => onChange(parseFloat(e.target.value))}
+                        onMouseUp={onCommit}
+                        onTouchEnd={onCommit}
+                    />
+                </div>
             </div>
         );
 
         const PresetButton = ({ label, onClick, active }) => (
             <button 
                 onClick={onClick}
-                className={`px-2 py-3 text-[9px] font-bold uppercase tracking-wider border transition-all duration-200 flex flex-col items-center justify-center text-center leading-tight ${
+                className={`px-2 py-3 text-[9px] font-bold uppercase tracking-wider border transition-all duration-200 flex flex-col items-center justify-center text-center leading-tight rounded-sm ${
                     active 
                     ? 'border-white bg-white text-black' 
-                    : 'border-gray-800 text-gray-500 hover:border-gray-500 hover:text-white'
+                    : 'border-gray-800 text-gray-500 hover:border-gray-500 hover:text-white bg-black/40'
                 }`}
             >
                 {label}
@@ -513,30 +543,19 @@
             const [history, setHistory] = useState([initialParams]);
             const [historyIndex, setHistoryIndex] = useState(0);
 
-            // Function to push state to history with BUG FIX for duplicate initial commit
             const commitToHistory = useCallback((newParams) => {
-                // Use history from state scope
                 const currentHistory = history.slice(0, historyIndex + 1);
                 const lastState = currentHistory[currentHistory.length - 1];
-
-                // Deep comparison simplified for this params structure
-                if (JSON.stringify(lastState) === JSON.stringify(newParams)) {
-                    // Do NOT increment index if state is identical
-                    return; 
-                }
-
+                if (JSON.stringify(lastState) === JSON.stringify(newParams)) return; 
                 const newHistory = [...currentHistory, newParams];
                 setHistory(newHistory);
                 setHistoryIndex(newHistory.length - 1);
             }, [history, historyIndex]);
 
-            // Helper to update params and view, OPTIONALLY committing to history
             const updateParams = (newParams, commit = false) => {
                 if (!newParams) return;
                 setParams(newParams);
-                if (commit) {
-                    commitToHistory(newParams);
-                }
+                if (commit) commitToHistory(newParams);
             };
 
             // Keyboard Shortcuts for Undo/Redo
@@ -545,35 +564,16 @@
                     if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
                         e.preventDefault();
                         if (e.shiftKey) {
-                            // Redo
                             if (historyIndex < history.length - 1) {
                                 const nextIndex = historyIndex + 1;
                                 const nextState = history[nextIndex];
-                                if (nextState) {
-                                    setHistoryIndex(nextIndex);
-                                    setParams(nextState);
-                                }
+                                if (nextState) { setHistoryIndex(nextIndex); setParams(nextState); }
                             }
                         } else {
-                            // Undo
                             if (historyIndex > 0) {
                                 const prevIndex = historyIndex - 1;
                                 const prevState = history[prevIndex];
-                                if (prevState) {
-                                    setHistoryIndex(prevIndex);
-                                    setParams(prevState);
-                                }
-                            }
-                        }
-                    } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-                        // Redo (Windows alternative)
-                        e.preventDefault();
-                        if (historyIndex < history.length - 1) {
-                            const nextIndex = historyIndex + 1;
-                            const nextState = history[nextIndex];
-                            if (nextState) {
-                                setHistoryIndex(nextIndex);
-                                setParams(nextState);
+                                if (prevState) { setHistoryIndex(prevIndex); setParams(prevState); }
                             }
                         }
                     }
@@ -583,7 +583,6 @@
             }, [history, historyIndex]);
 
             useEffect(() => {
-                // Safeguard against undefined params
                 if (params && params.sectionShape && params.sectionShape !== 'Custom') {
                     setSectionPoints(generatePresetPoints(params.sectionShape));
                 }
@@ -592,7 +591,7 @@
             const applyPreset = (name) => {
                 setPresetName(name);
                 const newParams = { ...params, ...PRESETS[name] };
-                updateParams(newParams, true); // Commit preset change
+                updateParams(newParams, true);
             };
 
             // Three.js Init
@@ -685,9 +684,9 @@
                 const center = geometry.boundingBox.getCenter(new THREE.Vector3());
                 geometry.translate(-center.x, -center.y, -center.z);
                 
+                // Adaptive scaling
                 const size = geometry.boundingBox.getSize(new THREE.Vector3());
                 const maxDim = Math.max(size.x, size.y, size.z);
-                
                 if (maxDim > 0) {
                     const targetSize = 40.0;
                     const scaleFactor = targetSize / maxDim;
@@ -721,20 +720,25 @@
             if (!params) return <div className="text-white p-4">Loading state...</div>;
 
             return (
-                <div className="relative w-full h-screen">
+                <div className="relative w-full h-screen overflow-hidden">
                     <div ref={mountRef} className="canvas-container" />
 
-                    <div className="absolute top-0 left-0 h-full w-full pointer-events-none">
+                    <div className="absolute top-0 left-0 h-full w-full pointer-events-none flex flex-col md:block">
                         
-                        <div className="absolute top-0 left-0 p-8 pointer-events-auto">
-                            <h1 className="text-4xl font-light tracking-tighter text-white">SHELL<span className="font-bold">GEN</span></h1>
-                            <p className="text-xs text-gray-500 mt-2 tracking-wide leading-relaxed">
+                        {/* HEADER */}
+                        <div className="absolute top-0 left-0 p-4 md:p-8 pointer-events-auto z-10 w-full md:w-auto">
+                            <h1 className="text-2xl md:text-4xl font-light tracking-tighter text-white">SHELL<span className="font-bold">GEN</span></h1>
+                            <p className="text-[10px] md:text-xs text-gray-500 mt-1 md:mt-2 tracking-wide leading-relaxed">
                                 Mathematical Morphology Tool<br/>
                                 Ref: Osaka Univ. FBS (Kondo Lab)
                             </p>
                         </div>
 
-                        <div className="absolute bottom-8 left-8 pointer-events-auto">
+                        {/* CROSS SECTION EDITOR */}
+                        {/* Mobile: Top Right, Scaled Down. Desktop: Bottom Left, Normal */}
+                        <div className="absolute top-[80px] right-2 transform scale-[0.6] origin-top-right
+                                        md:top-auto md:right-auto md:bottom-8 md:left-8 md:scale-100 md:transform-none 
+                                        pointer-events-auto z-20">
                             <CrossSectionEditor 
                                 points={sectionPoints} 
                                 setPoints={setSectionPoints}
@@ -748,16 +752,22 @@
                             />
                         </div>
 
-                        <div className="absolute top-0 right-0 h-full w-full md:w-80 pointer-events-auto">
-                            <div className="glass-panel w-full h-full flex flex-col p-6 overflow-y-auto custom-scroll">
+                        {/* CONTROL PANEL */}
+                        {/* Mobile: Bottom Sheet (Height 45%). Desktop: Right Sidebar (Height 100%) */}
+                        <div className="absolute bottom-0 left-0 w-full h-[45vh]
+                                        md:top-0 md:right-0 md:left-auto md:h-full md:w-80 md:bottom-auto
+                                        pointer-events-auto z-30 flex flex-col">
+                            
+                            <div className="glass-panel w-full h-full flex flex-col p-4 md:p-6 overflow-y-auto custom-scroll border-t border-gray-700 md:border-t-0 md:border-l">
                                 
-                                <div className="mb-6">
+                                {/* Presets */}
+                                <div className="mb-6 flex-shrink-0">
                                     <label className="text-[10px] font-bold text-gray-500 uppercase mb-2 block">Presets</label>
-                                    <div className="grid grid-cols-2 gap-2">
+                                    <div className="grid grid-cols-4 md:grid-cols-2 gap-2">
                                         {Object.keys(PRESETS).map(name => (
                                             <PresetButton 
                                                 key={name} 
-                                                label={name} 
+                                                label={name.split(' ')[0]} // Shorten name for mobile
                                                 active={presetName === name} 
                                                 onClick={() => applyPreset(name)} 
                                             />
@@ -765,9 +775,12 @@
                                     </div>
                                 </div>
 
+                                {/* Scrollable Content */}
                                 <div className="space-y-1 mb-6 flex-grow">
+                                    
+                                    {/* Section 1 */}
                                     <div className="mb-4 pb-2 border-b border-gray-800">
-                                        <p className="text-[10px] text-gray-500 mb-2">CROSS SECTION</p>
+                                        <p className="text-[10px] text-gray-500 mb-3 sticky top-0 bg-black/50 backdrop-blur-sm p-1 -mx-1 z-10">CROSS SECTION</p>
                                         
                                         <div className="mb-3">
                                             <label className="text-[9px] font-bold tracking-widest text-gray-400 uppercase block mb-1">SHAPE</label>
@@ -788,116 +801,42 @@
                                             </select>
                                         </div>
 
-                                        <Slider 
-                                            label="Flattening" 
-                                            value={params.flattening} 
-                                            min={0.1} max={3.0} step={0.01} 
-                                            onChange={(v) => updateParams({...params, flattening: v})}
-                                            onCommit={() => commitToHistory({...params})}
-                                        />
-                                        <Slider 
-                                            label="Twist" 
-                                            value={params.twisting} 
-                                            min={-1.0} max={1.0} step={0.01} 
-                                            onChange={(v) => updateParams({...params, twisting: v})}
-                                            onCommit={() => commitToHistory({...params})}
-                                        />
-                                        <Slider 
-                                            label="Rotation" 
-                                            value={params.openingAngle} 
-                                            min={0} max={360} step={1} 
-                                            onChange={(v) => updateParams({...params, openingAngle: v})}
-                                            onCommit={() => commitToHistory({...params})}
-                                        />
+                                        <Slider label="Flattening" value={params.flattening} min={0.1} max={3.0} onChange={(v) => updateParams({...params, flattening: v})} onCommit={() => commitToHistory({...params})} />
+                                        <Slider label="Twist" value={params.twisting} min={-1.0} max={1.0} onChange={(v) => updateParams({...params, twisting: v})} onCommit={() => commitToHistory({...params})} />
+                                        <Slider label="Rotation" value={params.openingAngle} min={0} max={360} step={1} onChange={(v) => updateParams({...params, openingAngle: v})} onCommit={() => commitToHistory({...params})} />
                                     </div>
 
+                                    {/* Section 2 */}
                                     <div className="mb-4 pb-2 border-b border-gray-800">
-                                        <p className="text-[10px] text-gray-500 mb-2">GROWTH</p>
-                                        <Slider 
-                                            label="Length" 
-                                            value={params.growth} 
-                                            min={0.1} max={20} step={0.01} 
-                                            onChange={(v) => updateParams({...params, growth: v})}
-                                            onCommit={() => commitToHistory({...params})}
-                                        />
-                                        <Slider 
-                                            label="Expansion" 
-                                            value={params.expansion} 
-                                            min={1.02} max={100.0} step={0.01} 
-                                            onChange={(v) => updateParams({...params, expansion: v})}
-                                            onCommit={() => commitToHistory({...params})}
-                                        />
+                                        <p className="text-[10px] text-gray-500 mb-3 sticky top-0 bg-black/50 backdrop-blur-sm p-1 -mx-1 z-10">GROWTH</p>
+                                        <Slider label="Length" value={params.growth} min={0.1} max={20} onChange={(v) => updateParams({...params, growth: v})} onCommit={() => commitToHistory({...params})} />
+                                        <Slider label="Expansion" value={params.expansion} min={1.02} max={100.0} onChange={(v) => updateParams({...params, expansion: v})} onCommit={() => commitToHistory({...params})} />
                                     </div>
 
+                                    {/* Section 3 */}
                                     <div className="mb-4 pb-2 border-b border-gray-800">
-                                        <p className="text-[10px] text-gray-500 mb-2">SHAPE (CONE)</p>
-                                        <Slider 
-                                            label="Thickness" 
-                                            value={params.thickness} 
-                                            min={0.5} max={10.0} step={0.01} 
-                                            onChange={(v) => updateParams({...params, thickness: v})}
-                                            onCommit={() => commitToHistory({...params})}
-                                        />
-                                        <Slider 
-                                            label="Bend" 
-                                            value={params.bend} 
-                                            min={0.0} max={2.0} step={0.01} 
-                                            onChange={(v) => updateParams({...params, bend: v})}
-                                            onCommit={() => commitToHistory({...params})}
-                                        />
-                                        <Slider 
-                                            label="Tilt" 
-                                            value={params.tilt} 
-                                            min={-90} max={90} step={0.01} 
-                                            onChange={(v) => updateParams({...params, tilt: v})}
-                                            onCommit={() => commitToHistory({...params})}
-                                        />
-                                        <Slider 
-                                            label="Divergence" 
-                                            value={params.divergence} 
-                                            min={0} max={20} step={0.01} 
-                                            onChange={(v) => updateParams({...params, divergence: v})}
-                                            onCommit={() => commitToHistory({...params})}
-                                        />
-                                        <Slider 
-                                            label="Pitch" 
-                                            value={params.translation} 
-                                            min={0} max={20} step={0.01} 
-                                            onChange={(v) => updateParams({...params, translation: v})}
-                                            onCommit={() => commitToHistory({...params})}
-                                        />
+                                        <p className="text-[10px] text-gray-500 mb-3 sticky top-0 bg-black/50 backdrop-blur-sm p-1 -mx-1 z-10">SHAPE (CONE)</p>
+                                        <Slider label="Thickness" value={params.thickness} min={0.5} max={10.0} onChange={(v) => updateParams({...params, thickness: v})} onCommit={() => commitToHistory({...params})} />
+                                        <Slider label="Bend" value={params.bend} min={0.0} max={2.0} onChange={(v) => updateParams({...params, bend: v})} onCommit={() => commitToHistory({...params})} />
+                                        <Slider label="Tilt" value={params.tilt} min={-90} max={90} onChange={(v) => updateParams({...params, tilt: v})} onCommit={() => commitToHistory({...params})} />
+                                        <Slider label="Divergence" value={params.divergence} min={0} max={20} onChange={(v) => updateParams({...params, divergence: v})} onCommit={() => commitToHistory({...params})} />
+                                        <Slider label="Pitch" value={params.translation} min={0} max={20} onChange={(v) => updateParams({...params, translation: v})} onCommit={() => commitToHistory({...params})} />
                                     </div>
 
+                                    {/* Section 4 */}
                                     <div>
-                                        <p className="text-[10px] text-gray-500 mb-2">ORNAMENTATION</p>
-                                        <Slider 
-                                            label="Frequency" 
-                                            value={params.ribFreq} 
-                                            min={0} max={50} step={0.01} 
-                                            onChange={(v) => updateParams({...params, ribFreq: v})}
-                                            onCommit={() => commitToHistory({...params})}
-                                        />
-                                        <Slider 
-                                            label="Amplitude" 
-                                            value={params.ribAmp} 
-                                            min={0} max={0.5} step={0.01} 
-                                            onChange={(v) => updateParams({...params, ribAmp: v})}
-                                            onCommit={() => commitToHistory({...params})}
-                                        />
+                                        <p className="text-[10px] text-gray-500 mb-3 sticky top-0 bg-black/50 backdrop-blur-sm p-1 -mx-1 z-10">ORNAMENTATION</p>
+                                        <Slider label="Frequency" value={params.ribFreq} min={0} max={50} onChange={(v) => updateParams({...params, ribFreq: v})} onCommit={() => commitToHistory({...params})} />
+                                        <Slider label="Amplitude" value={params.ribAmp} min={0} max={0.5} onChange={(v) => updateParams({...params, ribAmp: v})} onCommit={() => commitToHistory({...params})} />
                                     </div>
                                 </div>
 
-                                <div className="mt-auto grid grid-cols-2 gap-2">
-                                    <button 
-                                        onClick={handleDownloadSTL}
-                                        className="bg-white text-black text-xs font-bold py-3 hover:bg-gray-300 transition-colors"
-                                    >
+                                {/* Footer Actions */}
+                                <div className="mt-auto grid grid-cols-2 gap-2 flex-shrink-0 pt-2 border-t border-gray-800/50">
+                                    <button onClick={handleDownloadSTL} className="bg-white text-black text-xs font-bold py-3 md:py-3 rounded-sm hover:bg-gray-200 transition-colors">
                                         STL Export
                                     </button>
-                                    <button 
-                                        onClick={handleDownloadOBJ}
-                                        className="bg-gray-800 text-white text-xs font-bold py-3 hover:bg-gray-700 transition-colors"
-                                    >
+                                    <button onClick={handleDownloadOBJ} className="bg-gray-800 text-white text-xs font-bold py-3 md:py-3 rounded-sm hover:bg-gray-700 transition-colors">
                                         OBJ Export
                                     </button>
                                 </div>
