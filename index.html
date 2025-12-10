@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shell Generator | Mathematical Morphology</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Import Map for Three.js modules -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
+        
+        body { 
+            margin: 0; 
+            background-color: #050505; 
+            color: #e5e5e5;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+        }
+
+        /* Custom Scrollbar */
+        .custom-scroll::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+        }
+        
+        /* Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 14px;
+            width: 14px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            margin-top: -6px;
+            border: 2px solid #000;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 2px;
+            cursor: pointer;
+            background: #333;
+        }
+        
+        /* Glass Panel */
+        .glass-panel {
+            background: rgba(10, 10, 10, 0.75);
+            backdrop-filter: blur(12px);
+            border-left: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 0;
+        }
+
+        /* Dropdown/Select Styling */
+        select {
+            background-color: transparent;
+            color: white;
+            border: 1px solid #333;
+            padding: 4px 8px;
+            font-size: 10px;
+            font-family: 'Inter', sans-serif;
+            text-transform: uppercase;
+            width: 100%;
+            cursor: pointer;
+            outline: none;
+        }
+        select option {
+            background-color: #111;
+            color: white;
+        }
+
+        /* 2D Editor - Minimal Style */
+        .editor-container {
+            padding: 0;
+        }
+        .editor-canvas {
+            cursor: crosshair;
+        }
+
+        /* Editable Input */
+        .editable-input {
+            background: #222;
+            color: white;
+            border: 1px solid #555;
+            padding: 2px 4px;
+            width: 70px;
+            font-family: monospace;
+            font-size: 12px;
+            text-align: right;
+            outline: none;
+        }
+
+        /* Remove spin buttons from number input */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { STLExporter } from 'three/addons/exporters/STLExporter.js';
+        import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
+        
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        // --- Constants & Presets ---
+        const PRESETS = {
+            'Ammonite': { 
+                growth: 5.00, expansion: 3.32, thickness: 0.60, divergence: 1.00, translation: 0.00, 
+                ribFreq: 15.00, ribAmp: 0.05, sectionShape: 'Circle', flattening: 0.70, openingAngle: 0.00, twisting: 0.00, tilt: 0.00, bend: 1.00 
+            },
+            'Turban Shell': { 
+                growth: 6.00, expansion: 1.15, thickness: 4.00, divergence: 1.60, translation: 4.60, 
+                ribFreq: 0.00, ribAmp: 0.00, sectionShape: 'Circle', flattening: 1.00, openingAngle: 0.00, twisting: 0.20, tilt: 10.00, bend: 1.00 
+            },
+            'Bivalve': { 
+                growth: 1.00, expansion: 99.92, thickness: 3.00, divergence: 2.90, translation: 0.00, 
+                ribFreq: 0.00, ribAmp: 0.00, sectionShape: 'Crescent', flattening: 1.00, openingAngle: 0.00, twisting: 0.00, tilt: 0.00, bend: 1.00 
+            },
+            'Cone (Straight)': {
+                growth: 20.0, expansion: 1.02, thickness: 0.5, divergence: 0.0, translation: 2.0,
+                ribFreq: 2, ribAmp: 0.02, sectionShape: 'Circle', flattening: 1.0, openingAngle: 0, twisting: 0, tilt: -90.0, bend: 0.0 
+            }
+        };
+
+        // --- Utils: Generate Points for Presets ---
+        const generatePresetPoints = (type) => {
+            const points = [];
+            if (type === 'Square') {
+                points.push({x: 1, y: 1}, {x: -1, y: 1}, {x: -1, y: -1}, {x: 1, y: -1});
+                return points;
+            }
+            if (type === 'Triangle') {
+                const r = 1.2; 
+                for(let i=0; i<3; i++) {
+                    const angle = i * (Math.PI * 2 / 3) + Math.PI/2;
+                    points.push({x: r * Math.cos(angle), y: r * Math.sin(angle)});
+                }
+                return points;
+            }
+            const res = 32;
+            for (let i = 0; i < res; i++) {
+                const t = (i / res) * Math.PI * 2;
+                let r = 1.0;
+                
+                if (type === 'Scallop') {
+                    r = 1.0 + 0.15 * Math.cos(t * 8); 
+                } else if (type === 'Crescent') {
+                    const cosT = Math.cos(t);
+                    r = 1.0 - 0.4 * (cosT > 0 ? cosT : 0); 
+                }
+                
+                points.push({
+                    x: r * Math.cos(t),
+                    y: r * Math.sin(t)
+                });
+            }
+            return points;
+        };
+
+        // --- Math: Shell Generation ---
+        const generateShellGeometry = (params, shapePoints) => {
+            if (!params) return new THREE.BufferGeometry();
+
+            const {
+                growth, expansion, thickness, divergence, translation,
+                ribFreq, ribAmp, flattening, openingAngle, twisting,
+                tilt, bend, resolutionU, resolutionV
+            } = params;
+
+            const vertices = [];
+            const indices = [];
+            const totalTurns = growth; 
+            const uSteps = Math.floor(totalTurns * resolutionU);
+            const vSteps = resolutionV;
+
+            if (totalTurns <= 0.01) return new THREE.BufferGeometry();
+
+            const baseRotRad = (openingAngle * Math.PI) / 180;
+            const tiltRad = (tilt * Math.PI) / 180;
+            const cosTilt = Math.cos(tiltRad);
+            const sinTilt = Math.sin(tiltRad);
+
+            const getSectionPoint = (t) => {
+                const len = shapePoints.length;
+                if (len === 0) return {x:0, y:0};
+                const floatIdx = t * len;
+                const idx1 = Math.floor(floatIdx) % len;
+                const idx2 = (idx1 + 1) % len;
+                const fract = floatIdx - Math.floor(floatIdx);
+                const p1 = shapePoints[idx1];
+                const p2 = shapePoints[idx2];
+                return {
+                    x: p1.x + (p2.x - p1.x) * fract,
+                    y: p1.y + (p2.y - p1.y) * fract
+                };
+            };
+
+            for (let i = 0; i <= uSteps; i++) {
+                const t = (i / resolutionU) * Math.PI * 2; 
+                const spiralAngle = t * bend;
+
+                const rawScale = Math.pow(expansion, t / (Math.PI * 2));
+                const growthFactor = rawScale - 1.0; 
+                
+                const ribMod = 1 + Math.sin(t * ribFreq) * ribAmp;
+                const currentTubeScale = growthFactor * thickness * ribMod;
+
+                const centerRadiusFromAxis = growthFactor * divergence;
+                const centerX = centerRadiusFromAxis * Math.cos(spiralAngle);
+                const centerZ = centerRadiusFromAxis * Math.sin(spiralAngle);
+                const centerY = -growthFactor * translation * rawScale;
+
+                const cosA = Math.cos(spiralAngle);
+                const sinA = Math.sin(spiralAngle);
+
+                const dynamicTwist = t * twisting; 
+                const totalRot = baseRotRad + dynamicTwist;
+                const cosRot = Math.cos(totalRot);
+                const sinRot = Math.sin(totalRot);
+
+                for (let j = 0; j <= vSteps; j++) {
+                    const st = j / vSteps; 
+                    const pt = getSectionPoint(st);
+                    let sx = pt.x;
+                    let sy = pt.y;
+
+                    sy *= flattening;
+
+                    let rx = sx * cosRot - sy * sinRot;
+                    let ry = sx * sinRot + sy * cosRot;
+
+                    rx *= currentTubeScale;
+                    ry *= currentTubeScale;
+
+                    const p_radial = rx;
+                    const p_vertical = ry * cosTilt;
+                    const p_tangent = ry * sinTilt; 
+                    
+                    const px = centerX + (p_radial * cosA) - (p_tangent * sinA);
+                    const pz = centerZ + (p_radial * sinA) + (p_tangent * cosA);
+                    const py = centerY + p_vertical;
+                    
+                    vertices.push(px, py, pz);
+                }
+            }
+
+            for (let i = 0; i < uSteps; i++) {
+                for (let j = 0; j < vSteps; j++) {
+                    const a = i * (vSteps + 1) + j;
+                    const b = (i + 1) * (vSteps + 1) + j;
+                    const c = (i + 1) * (vSteps + 1) + (j + 1);
+                    const d = i * (vSteps + 1) + (j + 1);
+                    indices.push(a, b, d);
+                    indices.push(b, c, d);
+                }
+            }
+
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            geometry.setIndex(indices);
+            geometry.computeVertexNormals();
+            return geometry;
+        };
+
+        // --- Component: Cross Section Editor ---
+        const CrossSectionEditor = ({ points, setPoints, onEditStart }) => {
+            const canvasRef = useRef(null);
+            const [draggingIdx, setDraggingIdx] = useState(null);
+            const SIZE = 260; 
+            const CENTER = SIZE / 2;
+            const SCALE = 80; 
+
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, SIZE, SIZE);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, CENTER); ctx.lineTo(SIZE, CENTER);
+                ctx.moveTo(CENTER, 0); ctx.lineTo(CENTER, SIZE);
+                ctx.stroke();
+
+                if (points.length > 0) {
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 2;
+                    ctx.shadowBlur = 4;
+                    ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
+                    ctx.beginPath();
+                    points.forEach((p, i) => {
+                        const px = CENTER + p.x * SCALE;
+                        const py = CENTER - p.y * SCALE; 
+                        if (i === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    });
+                    ctx.closePath();
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
+
+                    ctx.fillStyle = '#4a90e2';
+                    points.forEach(p => {
+                        const px = CENTER + p.x * SCALE;
+                        const py = CENTER - p.y * SCALE;
+                        ctx.beginPath();
+                        ctx.arc(px, py, 4, 0, Math.PI * 2);
+                        ctx.fill();
+                    });
+                }
+            }, [points]);
+
+            const handleMouseDown = (e) => {
+                const rect = canvasRef.current.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                let minDist = 15; 
+                let idx = -1;
+                points.forEach((p, i) => {
+                    const px = CENTER + p.x * SCALE;
+                    const py = CENTER - p.y * SCALE;
+                    const dist = Math.sqrt((px - mouseX)**2 + (py - mouseY)**2);
+                    if (dist < minDist) { minDist = dist; idx = i; }
+                });
+                if (idx !== -1) { setDraggingIdx(idx); onEditStart(); }
+            };
+
+            const handleMouseMove = (e) => {
+                if (draggingIdx === null) return;
+                const rect = canvasRef.current.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                const newX = (mouseX - CENTER) / SCALE;
+                const newY = (CENTER - mouseY) / SCALE;
+                const newPoints = [...points];
+                newPoints[draggingIdx] = { x: newX, y: newY };
+                setPoints(newPoints);
+            };
+
+            const handleMouseUp = () => { setDraggingIdx(null); };
+
+            return (
+                <div className="editor-container">
+                    <div className="text-[10px] text-gray-500 mb-2 font-bold uppercase tracking-widest flex items-baseline gap-4">
+                        <span className="text-white">Section Editor</span>
+                        <span className="text-xs text-gray-600 font-normal normal-case tracking-normal">Drag points to reshape</span>
+                    </div>
+                    <canvas 
+                        ref={canvasRef}
+                        width={SIZE}
+                        height={SIZE}
+                        className="editor-canvas"
+                        onMouseDown={handleMouseDown}
+                        onMouseMove={handleMouseMove}
+                        onMouseUp={handleMouseUp}
+                        onMouseLeave={handleMouseUp}
+                    />
+                </div>
+            );
+        };
+
+        // --- Component: Editable Value ---
+        const EditableValue = ({ value, onChange, onCommit }) => {
+            const [isEditing, setIsEditing] = useState(false);
+            const [tempValue, setTempValue] = useState(value);
+
+            useEffect(() => {
+                if (value !== undefined) setTempValue(value);
+            }, [value]);
+
+            const handleKeyDown = (e) => {
+                if (e.key === 'Enter') {
+                    const num = parseFloat(tempValue);
+                    if (!isNaN(num)) {
+                        onChange(num);
+                        if(onCommit) onCommit();
+                    }
+                    setIsEditing(false);
+                }
+            };
+
+            const handleBlur = () => {
+                const num = parseFloat(tempValue);
+                if (!isNaN(num)) {
+                    onChange(num);
+                    if(onCommit) onCommit();
+                }
+                setIsEditing(false);
+            };
+
+            if (isEditing) {
+                return (
+                    <input 
+                        className="editable-input"
+                        type="number"
+                        step="0.01"
+                        value={tempValue}
+                        onChange={(e) => setTempValue(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        onBlur={handleBlur}
+                        autoFocus
+                    />
+                );
+            }
+
+            return (
+                <span 
+                    className="text-xs font-mono text-white cursor-text hover:text-blue-300 font-bold"
+                    onDoubleClick={() => setIsEditing(true)}
+                    title="Double click to edit"
+                >
+                    {typeof value === 'number' ? value.toFixed(2) : '0.00'}
+                </span>
+            );
+        };
+
+        // --- Component: Slider ---
+        const Slider = ({ label, value, min, max, step = 0.01, onChange, onCommit }) => (
+            <div className="mb-4">
+                <div className="flex justify-between mb-1">
+                    <span className="text-[9px] font-bold tracking-widest text-gray-400 uppercase">{label}</span>
+                    <EditableValue value={value} onChange={onChange} onCommit={onCommit} />
+                </div>
+                <input 
+                    type="range" 
+                    min={min} 
+                    max={max} 
+                    step={step} 
+                    value={value || 0} 
+                    onChange={(e) => onChange(parseFloat(e.target.value))}
+                    onMouseUp={onCommit}
+                    onTouchEnd={onCommit}
+                    onKeyUp={(e) => { if(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) onCommit && onCommit(); }}
+                />
+            </div>
+        );
+
+        const PresetButton = ({ label, onClick, active }) => (
+            <button 
+                onClick={onClick}
+                className={`px-2 py-3 text-[9px] font-bold uppercase tracking-wider border transition-all duration-200 flex flex-col items-center justify-center text-center leading-tight ${
+                    active 
+                    ? 'border-white bg-white text-black' 
+                    : 'border-gray-800 text-gray-500 hover:border-gray-500 hover:text-white'
+                }`}
+            >
+                {label}
+            </button>
+        );
+
+        const App = () => {
+            const mountRef = useRef(null);
+            const meshRef = useRef(null);
+            
+            // Initial Params
+            const initialParams = {
+                growth: 5.0, expansion: 3.32, thickness: 0.60, divergence: 1.00, translation: 0.00, 
+                ribFreq: 15.00, ribAmp: 0.05, sectionShape: 'Circle', flattening: 0.70, 
+                openingAngle: 0.00, twisting: 0.00, tilt: 0.00, bend: 1.00, 
+                resolutionU: 80, resolutionV: 50
+            };
+
+            const [params, setParams] = useState(initialParams);
+            const [sectionPoints, setSectionPoints] = useState(generatePresetPoints('Circle'));
+            const [presetName, setPresetName] = useState('Ammonite');
+
+            // --- Undo/Redo State ---
+            const [history, setHistory] = useState([initialParams]);
+            const [historyIndex, setHistoryIndex] = useState(0);
+
+            // Function to push state to history with BUG FIX for duplicate initial commit
+            const commitToHistory = useCallback((newParams) => {
+                // Use history from state scope
+                const currentHistory = history.slice(0, historyIndex + 1);
+                const lastState = currentHistory[currentHistory.length - 1];
+
+                // Deep comparison simplified for this params structure
+                if (JSON.stringify(lastState) === JSON.stringify(newParams)) {
+                    // Do NOT increment index if state is identical
+                    return; 
+                }
+
+                const newHistory = [...currentHistory, newParams];
+                setHistory(newHistory);
+                setHistoryIndex(newHistory.length - 1);
+            }, [history, historyIndex]);
+
+            // Helper to update params and view, OPTIONALLY committing to history
+            const updateParams = (newParams, commit = false) => {
+                if (!newParams) return;
+                setParams(newParams);
+                if (commit) {
+                    commitToHistory(newParams);
+                }
+            };
+
+            // Keyboard Shortcuts for Undo/Redo
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                        e.preventDefault();
+                        if (e.shiftKey) {
+                            // Redo
+                            if (historyIndex < history.length - 1) {
+                                const nextIndex = historyIndex + 1;
+                                const nextState = history[nextIndex];
+                                if (nextState) {
+                                    setHistoryIndex(nextIndex);
+                                    setParams(nextState);
+                                }
+                            }
+                        } else {
+                            // Undo
+                            if (historyIndex > 0) {
+                                const prevIndex = historyIndex - 1;
+                                const prevState = history[prevIndex];
+                                if (prevState) {
+                                    setHistoryIndex(prevIndex);
+                                    setParams(prevState);
+                                }
+                            }
+                        }
+                    } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+                        // Redo (Windows alternative)
+                        e.preventDefault();
+                        if (historyIndex < history.length - 1) {
+                            const nextIndex = historyIndex + 1;
+                            const nextState = history[nextIndex];
+                            if (nextState) {
+                                setHistoryIndex(nextIndex);
+                                setParams(nextState);
+                            }
+                        }
+                    }
+                };
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [history, historyIndex]);
+
+            useEffect(() => {
+                // Safeguard against undefined params
+                if (params && params.sectionShape && params.sectionShape !== 'Custom') {
+                    setSectionPoints(generatePresetPoints(params.sectionShape));
+                }
+            }, [params?.sectionShape]); 
+
+            const applyPreset = (name) => {
+                setPresetName(name);
+                const newParams = { ...params, ...PRESETS[name] };
+                updateParams(newParams, true); // Commit preset change
+            };
+
+            // Three.js Init
+            useEffect(() => {
+                if (!mountRef.current) return;
+                const width = mountRef.current.clientWidth;
+                const height = mountRef.current.clientHeight;
+                const scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x050505);
+
+                const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 2000);
+                camera.position.set(40, 30, 40);
+
+                const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                renderer.setSize(width, height);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                mountRef.current.appendChild(renderer.domElement);
+
+                const controls = new OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.05;
+
+                const ambientLight = new THREE.AmbientLight(0x404040, 3);
+                scene.add(ambientLight);
+                const spotLight = new THREE.SpotLight(0xffffff, 150);
+                spotLight.position.set(20, 50, 30);
+                scene.add(spotLight);
+                const blueLight = new THREE.PointLight(0x3344ff, 50);
+                blueLight.position.set(-20, -10, -10);
+                scene.add(blueLight);
+
+                const material = new THREE.MeshPhysicalMaterial({
+                    color: 0xe0e0e0, roughness: 0.3, metalness: 0.1, clearcoat: 0.5, side: THREE.DoubleSide
+                });
+
+                const mesh = new THREE.Mesh(new THREE.BufferGeometry(), material);
+                scene.add(mesh);
+                meshRef.current = mesh;
+
+                const grid = new THREE.GridHelper(100, 50, 0x222222, 0x111111);
+                grid.position.y = -20;
+                scene.add(grid);
+
+                let animationId;
+                const animate = () => {
+                    animationId = requestAnimationFrame(animate);
+                    controls.update();
+                    renderer.render(scene, camera);
+                };
+                animate();
+
+                const handleResize = () => {
+                    const w = window.innerWidth;
+                    const h = window.innerHeight;
+                    camera.aspect = w / h;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(w, h);
+                };
+                window.addEventListener('resize', handleResize);
+
+                return () => {
+                    cancelAnimationFrame(animationId);
+                    window.removeEventListener('resize', handleResize);
+                    if (mountRef.current) mountRef.current.removeChild(renderer.domElement);
+                    material.dispose();
+                };
+            }, []);
+
+            useEffect(() => {
+                if (!meshRef.current) return;
+                applyPreset('Ammonite');
+            }, []);
+
+            useEffect(() => {
+                if (!meshRef.current || !params) return;
+                
+                const geometry = generateShellGeometry(params, sectionPoints);
+                
+                if (meshRef.current.geometry) meshRef.current.geometry.dispose();
+                meshRef.current.geometry = geometry;
+                
+                if (['Square', 'Triangle', 'Custom'].includes(params.sectionShape)) {
+                    meshRef.current.material.flatShading = true;
+                } else {
+                    meshRef.current.material.flatShading = false;
+                }
+                meshRef.current.material.needsUpdate = true;
+
+                geometry.computeBoundingBox();
+                const center = geometry.boundingBox.getCenter(new THREE.Vector3());
+                geometry.translate(-center.x, -center.y, -center.z);
+                
+                const size = geometry.boundingBox.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                
+                if (maxDim > 0) {
+                    const targetSize = 40.0;
+                    const scaleFactor = targetSize / maxDim;
+                    geometry.scale(scaleFactor, scaleFactor, scaleFactor);
+                }
+
+            }, [params, sectionPoints]);
+
+            const handleDownloadSTL = () => {
+                if (!meshRef.current) return;
+                const exporter = new STLExporter();
+                const str = exporter.parse(meshRef.current, { binary: true });
+                const blob = new Blob([str], { type: 'application/octet-stream' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `shell_${params ? params.sectionShape : 'model'}.stl`;
+                link.click();
+            };
+
+            const handleDownloadOBJ = () => {
+                if (!meshRef.current) return;
+                const exporter = new OBJExporter();
+                const str = exporter.parse(meshRef.current);
+                const blob = new Blob([str], { type: 'text/plain' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `shell_${params ? params.sectionShape : 'model'}.obj`;
+                link.click();
+            };
+
+            if (!params) return <div className="text-white p-4">Loading state...</div>;
+
+            return (
+                <div className="relative w-full h-screen">
+                    <div ref={mountRef} className="canvas-container" />
+
+                    <div className="absolute top-0 left-0 h-full w-full pointer-events-none">
+                        
+                        <div className="absolute top-0 left-0 p-8 pointer-events-auto">
+                            <h1 className="text-4xl font-light tracking-tighter text-white">SHELL<span className="font-bold">GEN</span></h1>
+                            <p className="text-xs text-gray-500 mt-2 tracking-wide leading-relaxed">
+                                Mathematical Morphology Tool<br/>
+                                Ref: Osaka Univ. FBS (Kondo Lab)
+                            </p>
+                        </div>
+
+                        <div className="absolute bottom-8 left-8 pointer-events-auto">
+                            <CrossSectionEditor 
+                                points={sectionPoints} 
+                                setPoints={setSectionPoints}
+                                onEditStart={() => {
+                                    if (params.sectionShape !== 'Custom') {
+                                        const newP = {...params, sectionShape: 'Custom'};
+                                        setPresetName('Custom');
+                                        updateParams(newP, true);
+                                    }
+                                }}
+                            />
+                        </div>
+
+                        <div className="absolute top-0 right-0 h-full w-full md:w-80 pointer-events-auto">
+                            <div className="glass-panel w-full h-full flex flex-col p-6 overflow-y-auto custom-scroll">
+                                
+                                <div className="mb-6">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase mb-2 block">Presets</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {Object.keys(PRESETS).map(name => (
+                                            <PresetButton 
+                                                key={name} 
+                                                label={name} 
+                                                active={presetName === name} 
+                                                onClick={() => applyPreset(name)} 
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1 mb-6 flex-grow">
+                                    <div className="mb-4 pb-2 border-b border-gray-800">
+                                        <p className="text-[10px] text-gray-500 mb-2">CROSS SECTION</p>
+                                        
+                                        <div className="mb-3">
+                                            <label className="text-[9px] font-bold tracking-widest text-gray-400 uppercase block mb-1">SHAPE</label>
+                                            <select 
+                                                value={params.sectionShape} 
+                                                onChange={(e) => {
+                                                    const newP = {...params, sectionShape: e.target.value};
+                                                    setPresetName('Custom');
+                                                    updateParams(newP, true);
+                                                }}
+                                            >
+                                                <option value="Circle">Circle</option>
+                                                <option value="Square">Square</option>
+                                                <option value="Triangle">Triangle</option>
+                                                <option value="Scallop">Scallop</option>
+                                                <option value="Crescent">Crescent</option>
+                                                <option value="Custom">Custom (Edit on Screen)</option>
+                                            </select>
+                                        </div>
+
+                                        <Slider 
+                                            label="Flattening" 
+                                            value={params.flattening} 
+                                            min={0.1} max={3.0} step={0.01} 
+                                            onChange={(v) => updateParams({...params, flattening: v})}
+                                            onCommit={() => commitToHistory({...params})}
+                                        />
+                                        <Slider 
+                                            label="Twist" 
+                                            value={params.twisting} 
+                                            min={-1.0} max={1.0} step={0.01} 
+                                            onChange={(v) => updateParams({...params, twisting: v})}
+                                            onCommit={() => commitToHistory({...params})}
+                                        />
+                                        <Slider 
+                                            label="Rotation" 
+                                            value={params.openingAngle} 
+                                            min={0} max={360} step={1} 
+                                            onChange={(v) => updateParams({...params, openingAngle: v})}
+                                            onCommit={() => commitToHistory({...params})}
+                                        />
+                                    </div>
+
+                                    <div className="mb-4 pb-2 border-b border-gray-800">
+                                        <p className="text-[10px] text-gray-500 mb-2">GROWTH</p>
+                                        <Slider 
+                                            label="Length" 
+                                            value={params.growth} 
+                                            min={0.1} max={20} step={0.01} 
+                                            onChange={(v) => updateParams({...params, growth: v})}
+                                            onCommit={() => commitToHistory({...params})}
+                                        />
+                                        <Slider 
+                                            label="Expansion" 
+                                            value={params.expansion} 
+                                            min={1.02} max={100.0} step={0.01} 
+                                            onChange={(v) => updateParams({...params, expansion: v})}
+                                            onCommit={() => commitToHistory({...params})}
+                                        />
+                                    </div>
+
+                                    <div className="mb-4 pb-2 border-b border-gray-800">
+                                        <p className="text-[10px] text-gray-500 mb-2">SHAPE (CONE)</p>
+                                        <Slider 
+                                            label="Thickness" 
+                                            value={params.thickness} 
+                                            min={0.5} max={10.0} step={0.01} 
+                                            onChange={(v) => updateParams({...params, thickness: v})}
+                                            onCommit={() => commitToHistory({...params})}
+                                        />
+                                        <Slider 
+                                            label="Bend" 
+                                            value={params.bend} 
+                                            min={0.0} max={2.0} step={0.01} 
+                                            onChange={(v) => updateParams({...params, bend: v})}
+                                            onCommit={() => commitToHistory({...params})}
+                                        />
+                                        <Slider 
+                                            label="Tilt" 
+                                            value={params.tilt} 
+                                            min={-90} max={90} step={0.01} 
+                                            onChange={(v) => updateParams({...params, tilt: v})}
+                                            onCommit={() => commitToHistory({...params})}
+                                        />
+                                        <Slider 
+                                            label="Divergence" 
+                                            value={params.divergence} 
+                                            min={0} max={20} step={0.01} 
+                                            onChange={(v) => updateParams({...params, divergence: v})}
+                                            onCommit={() => commitToHistory({...params})}
+                                        />
+                                        <Slider 
+                                            label="Pitch" 
+                                            value={params.translation} 
+                                            min={0} max={20} step={0.01} 
+                                            onChange={(v) => updateParams({...params, translation: v})}
+                                            onCommit={() => commitToHistory({...params})}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <p className="text-[10px] text-gray-500 mb-2">ORNAMENTATION</p>
+                                        <Slider 
+                                            label="Frequency" 
+                                            value={params.ribFreq} 
+                                            min={0} max={50} step={0.01} 
+                                            onChange={(v) => updateParams({...params, ribFreq: v})}
+                                            onCommit={() => commitToHistory({...params})}
+                                        />
+                                        <Slider 
+                                            label="Amplitude" 
+                                            value={params.ribAmp} 
+                                            min={0} max={0.5} step={0.01} 
+                                            onChange={(v) => updateParams({...params, ribAmp: v})}
+                                            onCommit={() => commitToHistory({...params})}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="mt-auto grid grid-cols-2 gap-2">
+                                    <button 
+                                        onClick={handleDownloadSTL}
+                                        className="bg-white text-black text-xs font-bold py-3 hover:bg-gray-300 transition-colors"
+                                    >
+                                        STL Export
+                                    </button>
+                                    <button 
+                                        onClick={handleDownloadOBJ}
+                                        className="bg-gray-800 text-white text-xs font-bold py-3 hover:bg-gray-700 transition-colors"
+                                    >
+                                        OBJ Export
+                                    </button>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
