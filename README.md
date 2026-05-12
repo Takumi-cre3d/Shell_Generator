@@ -30,6 +30,4 @@
 * **大阪大学大学院生命機能研究科 近藤滋研究室**
   * [巻貝の形のシミュレーター](https://www.fbs.osaka-u.ac.jp/labs/skondo/simulators/shell/ShellShapeForSmartPhone.html)
 
-## 📄 ライセンス
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
